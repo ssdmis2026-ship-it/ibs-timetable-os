@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IBS Bengaluru — Academic Timetable OS</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <!-- SheetJS for real Excel (.xlsx) parsing & multi-sheet export -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+  <!-- Animated Background Ambient Orbs -->
+  <div class="ambient-bg">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+  </div>
+
+  <!-- Top Navigation Bar -->
+  <header class="neu-navbar">
+    <div class="nav-brand">
+      <div class="brand-icon neu-convex">
+        <i data-lucide="calendar-clock"></i>
+      </div>
+      <div>
+        <h1>Academic Timetable OS</h1>
+        <span class="subtitle">Zero-Clash Constraint Scheduler • Live Firebase Sync</span>
+      </div>
+    </div>
+
+    <div class="nav-actions">
+      <div id="firebaseStatusBadge" class="status-pill neu-inset">
+        <span class="dot offline"></span>
+        <span id="firebaseStatusText">Local Mode (Add Firebase Keys)</span>
+      </div>
+      <button class="neu-btn small" onclick="switchRoute('admin')" id="navAdminBtn">
+        <i data-lucide="layout-dashboard"></i> Admin Studio
+      </button>
+      <button class="neu-btn small" onclick="switchRoute('faculty')" id="navFacultyBtn">
+        <i data-lucide="user-check"></i> Faculty Link View
+      </button>
+      <button class="neu-btn small primary-accent" onclick="copyFacultyShareLink()">
+        <i data-lucide="share-2"></i> Copy Faculty Link
+      </button>
+    </div>
+  </header>
+
+  <!-- Toast Notification -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- ========================================================= -->
+  <!-- VIEW 1: PUBLIC FACULTY PREFERENCE SUBMISSION PORTAL       -->
+  <!-- ========================================================= -->
+  <main id="facultyPortalView" class="container hidden">
+    <div class="portal-hero neu-card fade-in-up">
+      <div class="badge-chip">Faculty Availability & Preference Portal</div>
+      <h2>Submit Your Teaching Availability</h2>
+      <p>Your preferences sync live with the Academic Scheduling Desk. Please verify your faculty category rules before submitting.</p>
+    </div>
+
+    <form id="facultySubmissionForm" class="neu-card form-grid fade-in-up" onsubmit="handleFacultyFormSubmit(event)">
+      <div class="form-section">
+        <label class="field-label">1. Faculty Full Name & Title *</label>
+        <input type="text" id="facName" class="neu-input" placeholder="e.g., Dr. Shweta Puneet / Prof. Venkatesh Ganapathy" required />
+      </div>
+
+      <div class="form-row-2">
+        <div class="form-section">
+          <label class="field-label">2. Target Program / Course *</label>
+          <input type="text" id="facProgram" class="neu-input" placeholder="e.g., MBA / BBA / BCA" required />
+        </div>
+        <div class="form-section">
+          <label class="field-label">3. Semester *</label>
+          <input type="text" id="facSemester" class="neu-input" placeholder="e.g., Sem I / Sem II / Sem IV" required />
+        </div>
+      </div>
+
+      <div class="form-section">
+        <label class="field-label">4. Faculty Category (Enforces Scheduling Rules Automatically) *</label>
+        <div class="category-cards">
+          <label class="cat-card neu-convex active" onclick="selectFacultyType('RF', this)">
+            <input type="radio" name="facType" value="RF" checked hidden />
+            <div class="cat-header">
+              <span class="tag rf">RF</span>
+              <strong>Regular Faculty</strong>
+            </div>
+            <p>Scheduled Mon–Fri only. Never assigned 4 consecutive periods in a row.</p>
+          </label>
+
+          <label class="cat-card neu-convex" onclick="selectFacultyType('AF', this)">
+            <input type="radio" name="facType" value="AF" hidden />
+            <div class="cat-header">
+              <span class="tag af">AF</span>
+              <strong>Adjunct Faculty</strong>
+            </div>
+            <p>Strictly capped at maximum <strong>2 days per week</strong> on your chosen days.</p>
+          </label>
+
+          <label class="cat-card neu-convex" onclick="selectFacultyType('VF', this)">
+            <input type="radio" name="facType" value="VF" hidden />
+            <div class="cat-header">
+              <span class="tag vf">VF</span>
+              <strong>Visiting Faculty</strong>
+            </div>
+            <p>Hard-locked to your exact visiting day(s) & slot(s), including Saturday.</p>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <label class="field-label">5. Subject(s) Handled *</label>
+        <div id="facSubjectsList" class="dynamic-rows">
+          <div class="sub-row">
+            <input type="text" class="neu-input fac-sub-code" placeholder="Course Code (e.g., SLMM603)" required />
+            <input type="text" class="neu-input fac-sub-name" placeholder="Course Name (e.g., B2B Marketing)" required />
+            <input type="text" class="neu-input fac-sub-sec" placeholder="Section (Optional, e.g., A)" />
+          </div>
+        </div>
+        <button type="button" class="neu-btn small mt-10" onclick="addFacultySubjectRow()">
+          <i data-lucide="plus"></i> Add Another Subject
+        </button>
+      </div>
+
+      <div class="form-section">
+        <label class="field-label" id="dayPickerLabel">6. Select Preferred / Available Days *</label>
+        <div class="day-pills" id="facDayPills">
+          <button type="button" class="day-pill neu-btn" data-day="Monday" onclick="toggleFacultyDay(this)">Monday</button>
+          <button type="button" class="day-pill neu-btn" data-day="Tuesday" onclick="toggleFacultyDay(this)">Tuesday</button>
+          <button type="button" class="day-pill neu-btn" data-day="Wednesday" onclick="toggleFacultyDay(this)">Wednesday</button>
+          <button type="button" class="day-pill neu-btn" data-day="Thursday" onclick="toggleFacultyDay(this)">Thursday</button>
+          <button type="button" class="day-pill neu-btn" data-day="Friday" onclick="toggleFacultyDay(this)">Friday</button>
+          <button type="button" class="day-pill neu-btn" data-day="Saturday" onclick="toggleFacultyDay(this)">Saturday</button>
+        </div>
+        <small id="dayRuleHint" class="hint-text">Regular Faculty: Select preferred days between Monday and Friday.</small>
+      </div>
+
+      <div class="form-section">
+        <label class="field-label">7. Preferred / Mandatory Time Slots *</label>
+        <div class="slot-chips" id="facSlotChips">
+          <button type="button" class="slot-chip neu-btn" data-slot="Morning (First Half)" onclick="toggleSlotChip(this)">Morning (First Half)</button>
+          <button type="button" class="slot-chip neu-btn" data-slot="Mid-Day / Pre-Lunch" onclick="toggleSlotChip(this)">Mid-Day / Pre-Lunch</button>
+          <button type="button" class="slot-chip neu-btn" data-slot="Post-Lunch Afternoon" onclick="toggleSlotChip(this)">Post-Lunch Afternoon</button>
+          <button type="button" class="slot-chip neu-btn" data-slot="Late Afternoon" onclick="toggleSlotChip(this)">Late Afternoon</button>
+        </div>
+        <input type="text" id="facExactTime" class="neu-input mt-10" placeholder="Or enter exact time window (e.g., 9:00-10:15 AM / 10:25-11:40 AM)" />
+      </div>
+
+      <div class="form-section">
+        <label class="field-label">8. Additional Constraints / Other Batch Commitments</label>
+        <textarea id="facNotes" class="neu-input" rows="2" placeholder="Mention if you teach BBA/BCA or another semester on specific days..."></textarea>
+      </div>
+
+      <button type="submit" class="neu-btn primary-cta full-width">
+        <i data-lucide="send"></i> Submit Availability Live to Timetable Desk
+      </button>
+    </form>
+
+    <div id="facultySuccessBox" class="neu-card success-box hidden fade-in-up">
+      <div class="success-icon"><i data-lucide="check-circle-2"></i></div>
+      <h3>Availability Recorded Successfully!</h3>
+      <p id="facultyReceiptText"></p>
+      <button class="neu-btn mt-16" onclick="resetFacultyForm()">Submit Another Response</button>
+    </div>
+  </main>
+
+  <!-- ========================================================= -->
+  <!-- VIEW 2: ADMIN TIMETABLE GENERATOR WIZARD                  -->
+  <!-- ========================================================= -->
+  <main id="adminStudioView" class="container">
+    <!-- Stepper Navigation -->
+    <div class="stepper-wrapper neu-card">
+      <div class="stepper-track">
+        <div class="stepper-progress" id="stepperProgress"></div>
+        <button class="step-node active" onclick="goToStep(1)" data-step="1"><span>1</span><label>Program</label></button>
+        <button class="step-node" onclick="goToStep(2)" data-step="2"><span>2</span><label>Bell & Breaks</label></button>
+        <button class="step-node" onclick="goToStep(3)" data-step="3"><span>3</span><label>Classrooms</label></button>
+        <button class="step-node" onclick="goToStep(4)" data-step="4"><span>4</span><label>Students & Courses</label></button>
+        <button class="step-node" onclick="goToStep(5)" data-step="5"><span>5</span><label>Faculty & Clashes</label></button>
+        <button class="step-node" onclick="goToStep(6)" data-step="6"><span>6</span><label>Live Timetable</label></button>
+      </div>
+    </div>
+
+    <!-- STEP 1: PROGRAM & COHORT CONFIGURATION -->
+    <section id="step-1" class="wizard-step active fade-in-up">
+      <div class="neu-card">
+        <div class="step-header">
+          <span class="step-badge">Step 1 of 6</span>
+          <h2>Program, Semester & Elective Structure</h2>
+          <p>Configure the academic batch dynamically. Nothing is hardcoded—works for MBA, BBA, BCA, or any cohort.</p>
+        </div>
+
+        <div class="form-row-3">
+          <div class="form-section">
+            <label class="field-label">Course / Program Name *</label>
+            <input type="text" id="cfgProgram" class="neu-input" placeholder="e.g., MBA, BBA, BCA" value="MBA" />
+          </div>
+          <div class="form-section">
+            <label class="field-label">Batch / Class Of *</label>
+            <input type="text" id="cfgBatch" class="neu-input" placeholder="e.g., Class of 2027" value="Class of 2027" />
+          </div>
+          <div class="form-section">
+            <label class="field-label">Semester *</label>
+            <input type="text" id="cfgSemester" class="neu-input" placeholder="e.g., Semester I, II, IV" value="Semester IV" />
+          </div>
+        </div>
+
+        <div class="form-section mt-16">
+          <label class="field-label">Active Working Days for This Cohort</label>
+          <div class="day-pills" id="cfgWorkingDays">
+            <button type="button" class="day-pill neu-btn active" data-day="Monday" onclick="toggleConfigDay(this)">Monday</button>
+            <button type="button" class="day-pill neu-btn active" data-day="Tuesday" onclick="toggleConfigDay(this)">Tuesday</button>
+            <button type="button" class="day-pill neu-btn active" data-day="Wednesday" onclick="toggleConfigDay(this)">Wednesday</button>
+            <button type="button" class="day-pill neu-btn active" data-day="Thursday" onclick="toggleConfigDay(this)">Thursday</button>
+            <button type="button" class="day-pill neu-btn active" data-day="Friday" onclick="toggleConfigDay(this)">Friday</button>
+            <button type="button" class="day-pill neu-btn active" data-day="Saturday" onclick="toggleConfigDay(this)">Saturday (VF/Special)</button>
+          </div>
+        </div>
+
+        <div class="neu-inset highlight-box mt-20">
+          <div class="flex-between">
+            <div>
+              <h4>Does this semester have Elective subjects?</h4>
+              <p class="hint-text">
+                <strong>If YES:</strong> Builds a Student-Subject Conflict Graph across 400+ students so no student's electives clash.<br/>
+                <strong>If NO (e.g., Sem I Core-only):</strong> Skips elective graph clustering and schedules clean core section blocks.
+              </p>
+            </div>
+            <label class="neu-switch">
+              <input type="checkbox" id="cfgHasElectives" checked onchange="toggleElectiveModeUI()" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div id="electiveModeStatus" class="mode-pill mt-10">
+            Active Mode: <strong>Core + Electives (Full Student Enrollment Clash-Graph Enabled)</strong>
+          </div>
+        </div>
+
+        <div class="step-footer">
+          <div></div>
+          <button class="neu-btn primary-cta" onclick="goToStep(2)">
+            Next: Bell Timings & Breaks <i data-lucide="arrow-right"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 2: BELL SCHEDULE, BREAKS & INSTITUTIONAL HOURS -->
+    <section id="step-2" class="wizard-step hidden fade-in-up">
+      <div class="neu-card">
+        <div class="step-header">
+          <span class="step-badge">Step 2 of 6</span>
+          <h2>College Bell Timings, Breaks & Special Hours</h2>
+          <p>Define exact session lengths, breaks, lunch timing, and any special weekly hours (Mentoring, Placement Prep, Library).</p>
+        </div>
+
+        <div class="form-row-3">
+          <div class="form-section">
+            <label class="field-label">College Start Time *</label>
+            <input type="time" id="cfgStartTime" class="neu-input" value="09:00" onchange="rebuildBellSlots()" />
+          </div>
+          <div class="form-section">
+            <label class="field-label">College End Time *</label>
+            <input type="time" id="cfgEndTime" class="neu-input" value="17:45" onchange="rebuildBellSlots()" />
+          </div>
+          <div class="form-section">
+            <label class="field-label">Per-Session Duration (Minutes) *</label>
+            <input type="number" id="cfgSessionMins" class="neu-input" value="75" min="30" max="180" onchange="rebuildBellSlots()" />
+          </div>
+        </div>
+
+        <div class="form-row-3 mt-16">
+          <div class="form-section">
+            <label class="field-label">Break Between Sessions (Minutes) *</label>
+            <input type="number" id="cfgBreakMins" class="neu-input" value="10" min="0" max="60" onchange="rebuildBellSlots()" />
+          </div>
+          <div class="form-section">
+            <label class="field-label">Lunch Break Start Time *</label>
+            <input type="time" id="cfgLunchStart" class="neu-input" value="13:05" onchange="rebuildBellSlots()" />
+          </div>
+          <div class="form-section">
+            <label class="field-label">Lunch Break Duration (Minutes) *</label>
+            <input type="number" id="cfgLunchMins" class="neu-input" value="35" min="15" max="90" onchange="rebuildBellSlots()" />
+          </div>
+        </div>
+
+        <div class="neu-inset highlight-box mt-16">
+          <div class="flex-between">
+            <div>
+              <h4>Back-to-Back Paired Sessions Mode</h4>
+              <p class="hint-text">Schedule each subject as 2 consecutive periods on the same day in the same room (e.g., Period 1 + Period 2), or as single standalone periods.</p>
+            </div>
+            <label class="neu-switch">
+              <input type="checkbox" id="cfgPairedSlots" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Live Generated Bell Slot Preview -->
+        <div class="form-section mt-20">
+          <label class="field-label">Live Generated Daily Period Slots Preview</label>
+          <div id="bellSlotsPreview" class="slot-preview-grid"></div>
+        </div>
+
+        <!-- Optional Special Institutional Hours -->
+        <div class="form-section mt-20">
+          <div class="flex-between">
+            <label class="field-label">Optional Special Weekly Hours (Mentoring, Placement Prep, Library Hour)</label>
+            <button type="button" class="neu-btn small" onclick="addSpecialHourRow()">
+              <i data-lucide="plus"></i> Add Special Hour
+            </button>
+          </div>
+          <div id="specialHoursContainer" class="dynamic-rows mt-10"></div>
+        </div>
+
+        <div class="step-footer">
+          <button class="neu-btn" onclick="goToStep(1)"><i data-lucide="arrow-left"></i> Back</button>
+          <button class="neu-btn primary-cta" onclick="goToStep(3)">
+            Next: Classrooms & Capacity <i data-lucide="arrow-right"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 3: CLASSROOMS & CAPACITY -->
+    <section id="step-3" class="wizard-step hidden fade-in-up">
+      <div class="neu-card">
+        <div class="step-header">
+          <span class="step-badge">Step 3 of 6</span>
+          <h2>Classrooms & Maximum Seating Capacity</h2>
+          <p>Add available rooms and capacities. Oversized elective cohorts will automatically split into sections based on these capacities.</p>
+        </div>
+
+        <div class="bulk-room-bar neu-inset">
+          <span>Quick Bulk Generator:</span>
+          <input type="text" id="bulkRoomPrefix" class="neu-input small-w" value="FCR" placeholder="Prefix (e.g. FCR)" />
+          <input type="number" id="bulkRoomCount" class="neu-input small-w" value="7" min="1" max="50" placeholder="Count" />
+          <input type="number" id="bulkRoomCap" class="neu-input small-w" value="65" min="10" max="300" placeholder="Capacity" />
+          <button type="button" class="neu-btn small primary-accent" onclick="bulkGenerateRooms()">
+            <i data-lucide="wand-2"></i> Generate Rooms
+          </button>
+          <button type="button" class="neu-btn small" onclick="addSingleRoomRow()">
+            <i data-lucide="plus"></i> Add 1 Room
+          </button>
+        </div>
+
+        <div id="roomsListContainer" class="rooms-grid mt-20"></div>
+
+        <div class="step-footer">
+          <button class="neu-btn" onclick="goToStep(2)"><i data-lucide="arrow-left"></i> Back</button>
+          <button class="neu-btn primary-cta" onclick="goToStep(4)">
+            Next: Upload Students & Subjects <i data-lucide="arrow-right"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 4: SUBJECTS & STUDENT ENROLLMENT UPLOAD -->
+    <section id="step-4" class="wizard-step hidden fade-in-up">
+      <div class="neu-card">
+        <div class="step-header">
+          <span class="step-badge">Step 4 of 6</span>
+          <h2>Upload Subject Master & Student Enrollment (.xlsx)</h2>
+          <p>Upload your Excel files directly. Download sample templates anytime to verify column headers.</p>
+        </div>
+
+        <div class="upload-grid-2">
+          <!-- Subject Master Upload -->
+          <div class="upload-card neu-convex">
+            <div class="flex-between">
+              <h4>1. Subject Master List (.xlsx)</h4>
+              <button type="button" class="neu-btn tiny" onclick="downloadTemplate('subjects')">
+                <i data-lucide="download"></i> Sample .xlsx
+              </button>
+            </div>
+            <p class="hint-text">Columns: <code>Code</code>, <code>Course</code>, <code>Type</code> (Core / Elective), <code>SessionsPerWeek</code></p>
+            <label class="drop-zone neu-inset mt-10">
+              <i data-lucide="file-spreadsheet"></i>
+              <span id="subjectFileLabel">Click to upload Subject Master Excel</span>
+              <input type="file" accept=".xlsx,.xls,.csv" hidden onchange="handleSubjectUpload(event)" />
+            </label>
+            <div id="subjectUploadStats" class="upload-stat"></div>
+          </div>
+
+          <!-- Student Enrollment Upload -->
+          <div class="upload-card neu-convex">
+            <div class="flex-between">
+              <h4>2. Student Course Registration (.xlsx)</h4>
+              <button type="button" class="neu-btn tiny" onclick="downloadTemplate('students')">
+                <i data-lucide="download"></i> Sample .xlsx
+              </button>
+            </div>
+            <p class="hint-text">Columns: <code>Enrolno</code>, <code>Name</code>, <code>Code</code>, <code>Course</code>, <code>Section</code> (optional)</p>
+            <label class="drop-zone neu-inset mt-10">
+              <i data-lucide="users"></i>
+              <span id="studentFileLabel">Click to upload Student Enrollment Excel</span>
+              <input type="file" accept=".xlsx,.xls,.csv" hidden onchange="handleStudentUpload(event)" />
+            </label>
+            <div id="studentUploadStats" class="upload-stat"></div>
+          </div>
+        </div>
+
+        <!-- Auto-Sectioning & Conflict Graph Summary -->
+        <div id="cohortAnalysisBox" class="neu-inset highlight-box mt-20 hidden">
+          <h4>Live Cohort & Auto-Sectioning Analysis</h4>
+          <div id="cohortAnalysisContent" class="analysis-grid mt-10"></div>
+        </div>
+
+        <div class="step-footer">
+          <button class="neu-btn" onclick="goToStep(3)"><i data-lucide="arrow-left"></i> Back</button>
+          <button class="neu-btn primary-cta" onclick="goToStep(5)">
+            Next: Faculty Lists & Clashes <i data-lucide="arrow-right"></i>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 5: FACULTY PREFERENCES (RF / AF / VF) & CROSS-BATCH CLASHES -->
+    <section id="step-5" class="wizard-step hidden fade-in-up">
+      <div class="neu-card">
+        <div class="step-header">
+          <span class="step-badge">Step 5 of 6</span>
+          <h2>Faculty Allocation (RF / AF / VF) & Other-Course Busy Slots</h2>
+          <p>Sync live responses from your shared Faculty Link OR upload separate Excel files for Regular, Adjunct, and Visiting faculty.</p>
+        </div>
+
+        <!-- Live Firebase Sync Banner -->
+        <div class="neu-inset sync-banner">
+          <div>
+            <h4><i data-lucide="radio"></i> Live Faculty Preference Link Sync</h4>
+            <p class="hint-text" id="liveSyncCountText">0 live submissions fetched from Firebase.</p>
+          </div>
+          <div class="btn-group">
+            <button type="button" class="neu-btn small" onclick="copyFacultyShareLink()">
+              <i data-lucide="link"></i> Copy Faculty Form Link
+            </button>
+            <button type="button" class="neu-btn small primary-accent" onclick="pullLiveFacultyPreferences()">
+              <i data-lucide="refresh-cw"></i> Sync Live Responses
+            </button>
+          </div>
+        </div>
+
+        <!-- 3 Separate Faculty Uploads -->
+        <div class="upload-grid-3 mt-20">
+          <!-- Regular Faculty (RF) -->
+          <div class="upload-card neu-convex">
+            <div class="flex-between">
+              <span class="tag rf">RF • Mon–Fri Only</span>
+              <button type="button" class="neu-btn tiny" onclick="downloadTemplate('rf')">
+                <i data-lucide="download"></i> Sample
+              </button>
+            </div>
+            <h4 class="mt-10">Regular Faculty List</h4>
+            <p class="hint-text">Available Mon–Fri. System blocks Saturdays & prevents 4-in-a-row.</p>
+            <label class="drop-zone neu-inset mt-10">
+              <i data-lucide="upload"></i>
+              <span id="rfFileLabel">Upload RF Excel (.xlsx)</span>
+              <input type="file" accept=".xlsx,.xls,.csv" hidden onchange="handleFacultyUpload(event, 'RF')" />
+            </label>
+            <div id="rfStats" class="upload-stat"></div>
+          </div>
+
+          <!-- Adjunct Faculty (AF) -->
+          <div class="upload-card neu-convex">
+            <div class="flex-between">
+              <span class="tag af">AF • Max 2 Days/Wk</span>
+              <button type="button" class="neu-btn tiny" onclick="downloadTemplate('af')">
+                <i data-lucide="download"></i> Sample
+              </button>
+            </div>
+            <h4 class="mt-10">Adjunct Faculty List</h4>
+            <p class="hint-text">Strictly scheduled within their 2 chosen days & preferred slots.</p>
+            <label class="drop-zone neu-inset mt-10">
+              <i data-lucide="upload"></i>
+              <span id="afFileLabel">Upload AF Excel (.xlsx)</span>
+              <input type="file" accept=".xlsx,.xls,.csv" hidden onchange="handleFacultyUpload(event, 'AF')" />
+            </label>
+            <div id="afStats" class="upload-stat"></div>
+          </div>
+
+          <!-- Visiting Faculty (VF) -->
+          <div class="upload-card neu-convex">
+            <div class="flex-between">
+              <span class="tag vf">VF • Hard Locked</span>
+              <button type="button" class="neu-btn tiny" onclick="downloadTemplate('vf')">
+                <i data-lucide="download"></i> Sample
+              </button>
+            </div>
+            <h4 class="mt-10">Visiting Faculty List</h4>
+            <p class="hint-text">Locked strictly to their exact visiting day & slot.</p>
+            <label class="drop-zone neu-inset mt-10">
+              <i data-lucide="upload"></i>
+              <span id="vfFileLabel">Upload VF Excel (.xlsx)</span>
+              <input type="file" accept=".xlsx,.xls,.csv" hidden onchange="handleFacultyUpload(event, 'VF')" />
+            </label>
+            <div id="vfStats" class="upload-stat"></div>
+          </div>
+        </div>
+
+        <!-- Cross-Course / Other Batches Busy Timings -->
+        <div class="upload-card neu-convex mt-20">
+          <div class="flex-between">
+            <div>
+              <h4>Cross-Program Busy Timings Shield (BBA / BCA / Senior MBA)</h4>
+              <p class="hint-text">Upload existing timetables of other batches OR pull saved timetables from Firebase so shared faculty never double-book.</p>
+            </div>
+            <div class="btn-group">
+              <button type="button" class="neu-btn tiny" onclick="downloadTemplate('busy')">
+                <i data-lucide="download"></i> Sample Busy .xlsx
+              </button>
+              <button type="button" class="neu-btn tiny primary-accent" onclick="pullSavedSchedulesFromFirebase()">
+                <i data-lucide="database"></i> Pull Saved Batches from Firebase
+              </button>
+            </div>
+          </div>
+          <label class="drop-zone neu-inset mt-10">
+            <i data-lucide="shield-alert"></i>
+            <span id="busyFileLabel">Upload Other-Batch Timetable / Busy Faculty Excel (.xlsx)</span>
+            <input type="file" accept=".xlsx,.xls,.csv" hidden onchange="handleBusyUpload(event)" />
+          </label>
+          <div id="busyStats" class="upload-stat"></div>
+        </div>
+
+        <!-- Demo Data Quick Loader for Instant Testing -->
+        <div class="neu-inset highlight-box mt-20 flex-between">
+          <div>
+            <h4>Want to test the solver immediately?</h4>
+            <p class="hint-text">Load a realistic simulated dataset (400 students, 14 electives + core, RF/AF/VF faculty, 7 rooms) with one click.</p>
+          </div>
+          <button type="button" class="neu-btn small" onclick="loadSimulatedDemoDataset()">
+            <i data-lucide="sparkles"></i> Load Demo Dataset
+          </button>
+        </div>
+
+        <div class="step-footer">
+          <button class="neu-btn" onclick="goToStep(4)"><i data-lucide="arrow-left"></i> Back</button>
+          <button class="neu-btn primary-cta" onclick="runAutoScheduler()">
+            <i data-lucide="cpu"></i> Generate Zero-Clash Timetable Now
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 6: GENERATED TIMETABLE, AUDIT & EXPORT -->
+    <section id="step-6" class="wizard-step hidden fade-in-up">
+      <!-- Solver Progress Overlay -->
+      <div id="solverProgressCard" class="neu-card text-center hidden">
+        <div class="spinner-ring"></div>
+        <h3 class="mt-16">Running Constraint-Satisfaction & Conflict Graph Solver...</h3>
+        <p id="solverStatusLabel" class="hint-text">Locking Visiting Faculty (VF) & Special Hours...</p>
+      </div>
+
+      <!-- Results Dashboard -->
+      <div id="timetableResultsWrapper">
+        <div class="neu-card">
+          <div class="flex-between wrap-gap">
+            <div>
+              <span class="step-badge" id="resultProgramBadge">MBA • Semester IV</span>
+              <h2 id="resultMainTitle">Master Clash-Free Timetable</h2>
+            </div>
+            <div class="btn-group wrap-gap">
+              <button class="neu-btn small" onclick="runAutoScheduler()">
+                <i data-lucide="rotate-cw"></i> Re-Optimize
+              </button>
+              <button class="neu-btn small primary-accent" onclick="saveTimetableToFirebase()">
+                <i data-lucide="cloud-upload"></i> Lock & Save to Firebase
+              </button>
+              <button class="neu-btn small primary-cta" onclick="exportTimetableToExcel()">
+                <i data-lucide="file-down"></i> Export Formatted .xlsx
+              </button>
+            </div>
+          </div>
+
+          <!-- Zero-Clash Audit KPI Strip -->
+          <div class="kpi-strip mt-20" id="auditKpiStrip"></div>
+
+          <!-- View Switcher Tabs -->
+          <div class="view-tabs mt-20">
+            <button class="tab-btn neu-btn active" onclick="switchResultTab('master', this)">
+              <i data-lucide="table"></i> Master Weekly Timetable
+            </button>
+            <button class="tab-btn neu-btn" onclick="switchResultTab('faculty', this)">
+              <i data-lucide="user-check"></i> Individual Faculty Grids
+            </button>
+            <button class="tab-btn neu-btn" onclick="switchResultTab('rooms', this)">
+              <i data-lucide="door-open"></i> Room Utilization Matrix
+            </button>
+            <button class="tab-btn neu-btn" onclick="switchResultTab('audit', this)">
+              <i data-lucide="shield-check"></i> Clash & Rule Verification
+            </button>
+          </div>
+        </div>
+
+        <!-- Tab 1: Master Grid -->
+        <div id="tab-master" class="result-tab-content neu-card mt-20">
+          <div class="flex-between mb-12">
+            <div class="legend-row">
+              <span class="legend-item"><i class="dot vf"></i> VF (Locked)</span>
+              <span class="legend-item"><i class="dot af"></i> AF (Max 2 Days)</span>
+              <span class="legend-item"><i class="dot rf"></i> RF (Mon–Fri, Max 3 Consecutive)</span>
+              <span class="legend-item"><i class="dot sp"></i> Special Institutional Hour</span>
+            </div>
+            <small class="hint-text">Tip: Drag & drop any session card to swap slots with live clash validation.</small>
+          </div>
+          <div class="table-responsive" id="masterGridContainer"></div>
+        </div>
+
+        <!-- Tab 2: Individual Faculty Timetables -->
+        <div id="tab-faculty" class="result-tab-content neu-card mt-20 hidden">
+          <div id="individualFacultyContainer" class="faculty-cards-grid"></div>
+        </div>
+
+        <!-- Tab 3: Room Utilization Matrix -->
+        <div id="tab-rooms" class="result-tab-content neu-card mt-20 hidden">
+          <div class="table-responsive" id="roomMatrixContainer"></div>
+        </div>
+
+        <!-- Tab 4: Audit & Unscheduled Log -->
+        <div id="tab-audit" class="result-tab-content neu-card mt-20 hidden">
+          <div id="auditDetailsContainer"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Firebase Modular SDK (v10) -->
+  <script type="module" src="firebase-config.js"></script>
+  <script src="solver.js"></script>
+  <script src="app.js"></script>
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+</html>
